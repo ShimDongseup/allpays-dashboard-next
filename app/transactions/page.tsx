@@ -30,18 +30,36 @@ type PayTypeItem = {
 
 const PAGE_SIZE = 15;
 
+// 정렬 기준으로 쓸 수 있는 키들
+type SortKey =
+  | "paymentCode"
+  | "mchtCode"
+  | "amount"
+  | "payType"
+  | "status"
+  | "paymentAt";
+
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    sortBy?: string;
+    order?: string;
+  }>;
 }) {
   const sp = await searchParams;
 
+  // 페이지
   const currentPage = (() => {
     const p = Number(sp.page ?? "1");
     if (Number.isNaN(p) || p < 1) return 1;
     return Math.floor(p);
   })();
+
+  // 정렬 기준, 기본값은 결제 시각(paymentAt) 내림차순
+  const sortBy: SortKey = (sp.sortBy as SortKey) ?? "paymentAt";
+  const order: "asc" | "desc" = sp.order === "asc" ? "asc" : "desc";
 
   const [paymentsRes, statusRes, typeRes] = await Promise.all([
     fetch(`${BASE_URL}/payments/list`, { cache: "no-store" }),
@@ -64,16 +82,72 @@ export default async function TransactionsPage({
   const statusMap = new Map(statusCodes.map((s) => [s.code, s.description]));
   const payTypeMap = new Map(payTypes.map((t) => [t.type, t.description]));
 
-  const totalItems = paymentsAll.length;
+  // 정렬
+  const sortedPayments = [...paymentsAll].sort((a, b) => {
+    const dir = order === "asc" ? 1 : -1;
+
+    let av: number | string = "";
+    let bv: number | string = "";
+
+    switch (sortBy) {
+      case "paymentCode":
+        av = a.paymentCode;
+        bv = b.paymentCode;
+        break;
+      case "mchtCode":
+        av = a.mchtCode;
+        bv = b.mchtCode;
+        break;
+      case "amount":
+        av = Number(a.amount);
+        bv = Number(b.amount);
+        break;
+      case "payType":
+        av = a.payType;
+        bv = b.payType;
+        break;
+      case "status":
+        av = a.status;
+        bv = b.status;
+        break;
+      case "paymentAt":
+      default:
+        av = new Date(a.paymentAt).getTime();
+        bv = new Date(b.paymentAt).getTime();
+        break;
+    }
+
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return 0;
+  });
+
+  // 페이지네이션
+  const totalItems = sortedPayments.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
 
   const start = (safePage - 1) * PAGE_SIZE;
   const end = start + PAGE_SIZE;
-  const payments = paymentsAll.slice(start, end);
+  const payments = sortedPayments.slice(start, end);
 
   const hasPrev = safePage > 1;
   const hasNext = safePage < totalPages;
+
+  // 정렬 상태 표시용 화살표
+  const arrowFor = (key: SortKey) =>
+    sortBy === key ? (order === "asc" ? " ▲" : " ▼") : "";
+
+  // 페이지네이션 링크에서 정렬 유지
+  const baseQuery = `sortBy=${sortBy}&order=${order}`;
+
+  const buildSortHref = (key: SortKey) => {
+    const isCurrent = sortBy === key;
+    const nextOrder: "asc" | "desc" =
+      isCurrent && order === "asc" ? "desc" : "asc";
+
+    return `/transactions?page=1&sortBy=${key}&order=${nextOrder}`;
+  };
 
   return (
     <div className="space-y-4">
@@ -93,18 +167,62 @@ export default async function TransactionsPage({
           </div>
         </div>
       </div>
-
+      <div className="text-sm px-2 flex justify-end">
+        * 테이블의 라벨을 눌러 정렬을 할 수 있습니다.
+      </div>
       {/* 거래 목록 테이블 */}
       <div className="rounded-lg border border-slate-800 overflow-hidden">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-900/60">
             <tr>
-              <th className="px-4 py-2 text-left">결제 코드</th>
-              <th className="px-4 py-2 text-left">가맹점 코드</th>
-              <th className="px-4 py-2 text-left">금액</th>
-              <th className="px-4 py-2 text-left">결제 수단</th>
-              <th className="px-4 py-2 text-left">상태</th>
-              <th className="px-4 py-2 text-left">결제 시각</th>
+              <th className="px-4 py-2 text-left">
+                <a
+                  href={buildSortHref("paymentCode")}
+                  className="cursor-pointer hover:underline"
+                >
+                  결제 코드{arrowFor("paymentCode")}
+                </a>
+              </th>
+              <th className="px-4 py-2 text-left">
+                <a
+                  href={buildSortHref("mchtCode")}
+                  className="cursor-pointer hover:underline"
+                >
+                  가맹점 코드{arrowFor("mchtCode")}
+                </a>
+              </th>
+              <th className="px-4 py-2 text-left">
+                <a
+                  href={buildSortHref("amount")}
+                  className="cursor-pointer hover:underline"
+                >
+                  금액{arrowFor("amount")}
+                </a>
+              </th>
+              <th className="px-4 py-2 text-left">
+                <a
+                  href={buildSortHref("payType")}
+                  className="cursor-pointer hover:underline"
+                >
+                  결제 수단{arrowFor("payType")}
+                </a>
+              </th>
+              <th className="px-4 py-2 text-left">
+                <a
+                  href={buildSortHref("status")}
+                  className="cursor-pointer hover:underline"
+                >
+                  상태{arrowFor("status")}
+                </a>
+              </th>
+              <th className="px-4 py-2 text-left">
+                <a
+                  href={buildSortHref("paymentAt")}
+                  className="cursor-pointer hover:underline"
+                >
+                  결제 시각{arrowFor("paymentAt")}
+                </a>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -151,7 +269,9 @@ export default async function TransactionsPage({
         </div>
         <div className="space-x-2">
           <a
-            href={hasPrev ? `/transactions?page=${safePage - 1}` : "#"}
+            href={
+              hasPrev ? `/transactions?page=${safePage - 1}&${baseQuery}` : "#"
+            }
             aria-disabled={!hasPrev}
             className={`inline-flex items-center rounded-md border px-3 py-1.5 ${
               hasPrev
@@ -162,7 +282,9 @@ export default async function TransactionsPage({
             이전
           </a>
           <a
-            href={hasNext ? `/transactions?page=${safePage + 1}` : "#"}
+            href={
+              hasNext ? `/transactions?page=${safePage + 1}&${baseQuery}` : "#"
+            }
             aria-disabled={!hasNext}
             className={`inline-flex items-center rounded-md border px-3 py-1.5 ${
               hasNext

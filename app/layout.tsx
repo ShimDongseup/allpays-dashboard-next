@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               대시보드
             </Link>
             <Link
-              href="/transactions"
+              href="/transactions?page=1&sortBy=paymentAt&order=asc"
               className="block rounded-md px-3 py-2 hover:bg-slate-800"
             >
               거래 내역
@@ -44,10 +44,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               가맹점 목록
             </Link>
           </nav>
-
-          <div className="mt-auto text-xs text-slate-500">
-            © {new Date().getFullYear()} AllPays Payments
-          </div>
         </aside>
 
         {/* Main */}
